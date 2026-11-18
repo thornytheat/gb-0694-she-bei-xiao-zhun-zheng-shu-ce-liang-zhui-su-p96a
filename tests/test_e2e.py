@@ -51,3 +51,32 @@ def test_rule_version_is_part_of_batch_identity(monkeypatch):
     monkeypatch.setattr(manifest,'RULE_VERSION','future-rules')
     second=manifest.make('same content')
     assert first['sha256']==second['sha256'] and first['run_id']!=second['run_id']
+
+def test_evidence_shows_both_identities_and_destination(client):
+    text=client.get('/api/evidence.csv').data.decode('utf-8-sig')
+    assert '原始设备' in text and '合并归属' in text and '拒用去向' in text and '归属状态' in text
+
+def test_merge_save_recovers_from_written_part(client,raw,monkeypatch): # TRAP-28
+    from app import store
+    first=client.post('/api/run',json={'csv':raw}).get_json()
+    real_connection=store.connection
+    class RacingConnection: # 模拟竞态：查询时未写入，插入时撞上已写入部分
+        def __init__(self): self.inner=real_connection(); self.hidden=False
+        def execute(self,sql,params=()):
+            if not self.hidden and sql.startswith('SELECT') and 'WHERE id=?' in sql:
+                self.hidden=True;return self.inner.execute(sql+' AND 1=0',params)
+            return self.inner.execute(sql,params)
+        def __enter__(self): return self
+        def __exit__(self,*exc): self.inner.__exit__(*exc)
+    monkeypatch.setattr(store,'connection',RacingConnection)
+    again=client.post('/api/run',json={'csv':raw}).get_json()
+    assert again['reused'] is True and again['manifest']['run_id']==first['manifest']['run_id']
+    assert again['stages']['2']==first['stages']['2'] # 归属版本一致
+    assert len(client.get('/api/history').get_json())==1 # 没有第二套归属版本
+
+def test_rerun_never_duplicates_attribution_versions(client,raw):
+    first=client.post('/api/run',json={'csv':raw}).get_json()
+    for _ in range(2): client.post('/api/run',json={'csv':raw})
+    again=client.post('/api/run',json={'csv':raw}).get_json()
+    assert again['reused'] is True and again['stages']['2']==first['stages']['2']
+    assert len(client.get('/api/history').get_json())==1

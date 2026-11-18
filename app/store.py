@@ -7,10 +7,16 @@ def connection():
     db.execute('CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, payload TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, decision TEXT NOT NULL DEFAULT "待复核")')
     return db
 def save(result):
+    ident=result['manifest']['run_id']
     with connection() as db:
-        ident=result['manifest']['run_id'];row=db.execute('SELECT payload,revision,decision FROM runs WHERE id=?',(ident,)).fetchone()
+        row=db.execute('SELECT payload,revision,decision FROM runs WHERE id=?',(ident,)).fetchone()
         if row: return {**json.loads(row['payload']), 'revision':row['revision'], 'decision':row['decision'], 'reused':True}
-        db.execute('INSERT INTO runs(id,payload) VALUES (?,?)',(ident,json.dumps(result,ensure_ascii=False)))
+        try:
+            db.execute('INSERT INTO runs(id,payload) VALUES (?,?)',(ident,json.dumps(result,ensure_ascii=False)))
+        except sqlite3.IntegrityError:
+            # 合并补录与已写入部分冲突：从已写入部分恢复，不产生第二套归属版本。
+            row=db.execute('SELECT payload,revision,decision FROM runs WHERE id=?',(ident,)).fetchone()
+            return {**json.loads(row['payload']), 'revision':row['revision'], 'decision':row['decision'], 'reused':True}
     return {**result,'revision':1,'decision':'待复核','reused':False}
 def get_run(ident):
     with connection() as db: row=db.execute('SELECT payload,revision,decision FROM runs WHERE id=?',(ident,)).fetchone()

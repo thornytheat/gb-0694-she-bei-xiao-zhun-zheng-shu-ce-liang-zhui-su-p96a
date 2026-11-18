@@ -21,7 +21,15 @@ def apply(ctx):
     # A conflicted certificate is never trusted for either retained or later measurements.
     for cert in conflicted:certs[cert]['conflicted']=True
     names=equivalence([r for r in measurements if r['cert'] not in conflicted])
-    for r in measurements: r['canonical']=names.get(r['device'],r['device'])
+    # 合并归属切换：等价类被冲突证书的设备码污染时，切换失败，回滚到送检原始设备码。
+    members={}
+    for code,root in names.items():members.setdefault(root,set()).add(code)
+    tainted={r['device'] for r in measurements if r['cert'] in conflicted}
+    blocked={root for root,codes in members.items() if codes&tainted}
+    rolled_back=0
+    for r in measurements:
+        root=names.get(r['device'],r['device'])
+        if root!=r['device'] and root in blocked:r['canonical']=r['device'];r['attribution']='回滚';rolled_back+=1
+        else:r['canonical']=root;r['attribution']='合并' if root!=r['device'] else '原始'
     ctx.update(certs=certs,measurements=measurements,duplicates=duplicates)
-    return {'rows':[{'证书':r['cert'],'设备':r['canonical'],'别名':r['alias'],'父证书':r['parent'],'定义状态':'冲突' if r['cert'] in conflicted else '一致','行号':r['行号']} for r in measurements],'metrics':[['证书',len(certs),'份'],['冲突定义',len(conflicted),'份'],['重复',duplicates,'条']]}
-
+    return {'rows':[{'证书':r['cert'],'原始设备':r['device'],'合并归属':r['canonical'],'归属状态':r['attribution'],'别名':r['alias'],'父证书':r['parent'],'定义状态':'冲突' if r['cert'] in conflicted else '一致','行号':r['行号']} for r in measurements],'metrics':[['证书',len(certs),'份'],['冲突定义',len(conflicted),'份'],['重复',duplicates,'条'],['回滚归属',rolled_back,'条']]}

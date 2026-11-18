@@ -28,6 +28,9 @@
 | TRAP-22 | 设备别名 | 静默覆盖或误计 | 显式裁决并保留证据 | `app/modules/m2_identity/rules.py` | `tests/test_m2.py::test_alias_order_independent` |
 | TRAP-23 | 失效日边界 | 静默覆盖或误计 | 显式裁决并保留证据 | `app/modules/m3_validity/rules.py` | `tests/test_m3.py::test_expiry_endpoint` |
 | TRAP-25 | 多证书重叠 | 静默覆盖或误计 | 显式裁决并保留证据 | `app/modules/m3_validity/rules.py` | `tests/test_m3.py::test_overlapping_certificates` |
+| TRAP-26 | 编码改正同机重证 | 沿用原编码查不出重叠，重叠证书继续有效 | 测量同带原始身份与合并归属，有效期按合并归属拦截，对外引用不改 | `app/modules/m2_identity/rules.py` | `tests/test_m2.py::test_corrected_code_intercepts_overlap_by_merged_identity` |
+| TRAP-27 | 合并切换失败 | 好测量被污染身份拖垮 | 回滚到送检原始归属并留证据 | `app/modules/m2_identity/rules.py` | `tests/test_m2.py::test_switch_failure_rolls_back_to_original` |
+| TRAP-28 | 补录写入冲突 | 报错或产生第二套归属版本 | 从已写入部分恢复，幂等复用 | `app/store.py` | `tests/test_e2e.py::test_merge_save_recovers_from_written_part` |
 
 ## 对账规则
 
